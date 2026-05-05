@@ -1,3 +1,9 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { API_URL } from '../config';
+import Logo from '../components/ui/Logo';
+
 // Step 12: Verifying Address
 function VerifyingAddressStep() {
 	return (
@@ -40,9 +46,8 @@ function AddressFailStep({ onRetry }) {
 	);
 }
 // Step 10: Verify Address
-import { useRef as useRef2 } from 'react';
 function VerifyAddressStep({ onFile }) {
-	const fileInputRef = useRef2(null);
+	const fileInputRef = useRef(null);
 	return (
 		<div className="min-h-screen bg-[#0A0B0D] flex flex-col items-center justify-center px-4">
 			<div className="w-full max-w-lg mx-auto">
@@ -154,9 +159,6 @@ function AllSetStep({ onContinue }) {
 		</div>
 	);
 }
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import Logo from '../components/ui/Logo';
 
 /* ════════════════════════════════════════════════════
    Shared dark-page shell
@@ -267,18 +269,73 @@ const ChevronRight = () => (
 /* ════════════════════════════════════════════════════
    STEP 0 — Email entry (original sign-up)
    ════════════════════════════════════════════════════ */
-const StepEmail = ({ email, setEmail, onNext }) => (
-	<Shell>
-		<form onSubmit={(e) => { e.preventDefault(); if (email.trim()) onNext(); }}>
-			<h1 className="text-[1.75rem] font-bold text-white mb-2">Create your account</h1>
-			<p className="text-[0.8125rem] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2 mb-4 text-center">
-				Demo app – do not use your real password.
-			</p>
-			<p className="text-[0.9375rem] text-[#8A919E] mb-6 leading-6">
-				Access all that Coinbase has to offer with a single account.
-			</p>
-			<DarkInput label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email address" />
-			<BlueBtn type="submit">Continue</BlueBtn>
+const StepEmail = ({ email, setEmail, name, setName, password, setPassword, isLoading, setIsLoading, onNext }) => {
+	const [error, setError] = useState('');
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		setError('');
+
+		if (!name.trim() || !email.trim() || !password.trim()) {
+			setError('Please fill in all fields');
+			return;
+		}
+
+		if (password.length < 6) {
+			setError('Password must be at least 6 characters');
+			return;
+		}
+
+		console.log('API_URL:', API_URL);
+		setIsLoading(true);
+		try {
+			console.log('Making API call to:', `${API_URL}/api/register`);
+			console.log('Request data:', { name: name.trim(), email: email.trim(), password: '***' });
+			const response = await axios.post(`${API_URL}/api/register`, {
+				name: name.trim(),
+				email: email.trim(),
+				password,
+			});
+			console.log('API response:', response);
+			console.log('Response status:', response.status);
+			console.log('Response data:', response.data);
+
+			if (response.status === 201 || response.data.message) {
+				console.log('Registration successful, proceeding to next step');
+				onNext();
+			} else {
+				console.log('Unexpected response format');
+				setError('Unexpected response from server');
+			}
+		} catch (err) {
+			console.error('API Error:', err);
+			console.error('Error response:', err.response);
+			console.error('Error message:', err.message);
+			setError(err.response?.data?.message || 'Registration failed. Please try again.');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	return (
+		<Shell>
+			<form onSubmit={handleSubmit}>
+				<h1 className="text-[1.75rem] font-bold text-white mb-2">Create your account</h1>
+				<p className="text-[0.8125rem] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2 mb-4 text-center">
+					Demo app – do not use your real password.
+				</p>
+				<p className="text-[0.9375rem] text-[#8A919E] mb-6 leading-6">
+					Access all that Coinbase has to offer with a single account.
+				</p>
+				{error && (
+					<div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-[0.875rem]">
+						{error}
+					</div>
+				)}
+				<DarkInput label="Full name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
+				<DarkInput label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email address" />
+				<DarkInput label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
+				<BlueBtn type="submit" disabled={isLoading}>{isLoading ? 'Creating account...' : 'Continue'}</BlueBtn>
 
 			<div className="flex items-center gap-3 my-5">
 				<div className="flex-1 h-px bg-[#2C2F36]" />
@@ -306,7 +363,9 @@ const StepEmail = ({ email, setEmail, onNext }) => (
 			</p>
 		</form>
 	</Shell>
-);
+	);
+};
+
 
 /* ════════════════════════════════════════════════════
    STEP 1 — Verify email code
@@ -314,6 +373,8 @@ const StepEmail = ({ email, setEmail, onNext }) => (
 const StepVerifyEmail = ({ email, onNext }) => {
 	const [code, setCode] = useState(['', '', '', '', '', '']);
 	const [timer, setTimer] = useState(30);
+	const [error, setError] = useState('');
+	const [isLoading, setIsLoading] = useState(false);
 	const refs = useRef([]);
 
 	useEffect(() => {
@@ -324,11 +385,36 @@ const StepVerifyEmail = ({ email, onNext }) => {
 
 	const focusAt = useCallback((i) => refs.current[i]?.focus(), []);
 
+	const submitCode = async (codeArray) => {
+		const verificationCode = codeArray.join('');
+		setIsLoading(true);
+		setError('');
+
+		try {
+			const response = await axios.post(`${API_URL}/api/verify-email`, {
+				email: email.trim(),
+				code: verificationCode,
+			});
+
+			if (response.status === 200) {
+				if (response.data.token) {
+					localStorage.setItem('token', response.data.token);
+				}
+				onNext();
+			}
+		} catch (err) {
+			setError(err.response?.data?.message || 'Invalid code. Please try again.');
+			setCode(['', '', '', '', '', '']);
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
 	const handleChange = (i, v) => {
 		if (v && !/^\d$/.test(v)) return;
 		const c = [...code]; c[i] = v; setCode(c);
 		if (v && i < 5) focusAt(i + 1);
-		if (c.every((d) => d)) setTimeout(onNext, 300);
+		if (c.every((d) => d)) setTimeout(() => submitCode(c), 300);
 	};
 
 	const handleKey = (i, e) => { if (e.key === 'Backspace' && !code[i] && i > 0) focusAt(i - 1); };
@@ -338,7 +424,21 @@ const StepVerifyEmail = ({ email, onNext }) => {
 		const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
 		const c = [...code]; for (let i = 0; i < 6; i++) c[i] = p[i] || ''; setCode(c);
 		focusAt(Math.min(p.length, 5));
-		if (c.every((d) => d)) setTimeout(onNext, 300);
+		if (c.every((d) => d)) setTimeout(() => submitCode(c), 300);
+	};
+
+	const handleResend = async () => {
+		setIsLoading(true);
+		setError('');
+		try {
+			await axios.post(`${API_URL}/api/resend-code`, { email: email.trim() });
+			setTimer(30);
+			setCode(['', '', '', '', '', '']);
+		} catch (err) {
+			setError('Failed to resend code. Please try again.');
+		} finally {
+			setIsLoading(false);
+		}
 	};
 
 	return (
@@ -358,9 +458,9 @@ const StepVerifyEmail = ({ email, onNext }) => {
 					/>
 				))}
 			</div>
-			<button onClick={timer <= 0 ? () => setTimer(30) : undefined} disabled={timer > 0}
+			<button onClick={timer <= 0 ? handleResend : undefined} disabled={timer > 0 || isLoading}
 				className={`w-full h-14 rounded-full font-semibold text-[0.9375rem] transition-colors mb-6 ${timer > 0 ? 'bg-[#1E2025] text-[#5B616E] cursor-not-allowed' : 'bg-[#5B8DEF] hover:bg-[#4A7DE0] text-white cursor-pointer'}`}>
-				{timer > 0 ? `Resend code in ${timer}` : 'Resend code'}
+				{isLoading ? 'Working…' : timer > 0 ? `Resend code in ${timer}` : 'Resend code'}
 			</button>
 			<p className="text-center text-[0.875rem] text-white">
 				Can&apos;t access?{' '}<a href="#" className="text-[#0052FF] hover:underline font-medium">Update your 2FA</a>
@@ -695,6 +795,9 @@ const StepVerifying = () => (
 const SignUp = () => {
 	const [step, setStep] = useState(0);
 	const [email, setEmail] = useState('');
+	const [name, setName] = useState('');
+	const [password, setPassword] = useState('');
+	const [isLoading, setIsLoading] = useState(false);
 	const [citizenship, setCitizenship] = useState('GH');
 	const [residence, setResidence] = useState('GH');
 	const [birthCity, setBirthCity] = useState('');
@@ -705,7 +808,7 @@ const SignUp = () => {
 	const back = () => setStep((s) => Math.max(0, s - 1));
 
 	switch (step) {
-		case 0: return <StepEmail email={email} setEmail={setEmail} onNext={next} />;
+		case 0: return <StepEmail email={email} setEmail={setEmail} name={name} setName={setName} password={password} setPassword={setPassword} isLoading={isLoading} setIsLoading={setIsLoading} onNext={next} />;
 		case 1: return <StepVerifyEmail email={email} onNext={next} />;
 		case 2: return <StepAccountSetup onNext={next} />;
 		case 3: return <StepEmailOptIn onNext={next} />;
